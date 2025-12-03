@@ -1,0 +1,12 @@
+{
+  "name": "Mad Scientist Style Check",
+  "description": "Verify code follows Mad Scientist style guide conventions (SCREAMING_SNAKE_CASE for FSM states, golem_ prefix, etc.)",
+  "trigger": {
+    "type": "manual"
+  },
+  "action": {
+    "type": "message",
+    "message": "Review the open file and check:\n1. FSM states use SCREAMING_SNAKE_CASE\n2. State variables use golem_ prefix\n3. Core functions use SCREAMING_SNAKE_CASE\n4. Files are in correct directories per structure.md\n5. Only three.js, TypeScript, and Tween.js are used\n\nReport any violations and suggest fixes."
+  },
+  "enabled": true
+}

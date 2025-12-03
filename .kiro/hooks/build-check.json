@@ -1,0 +1,12 @@
+{
+  "name": "Pre-Build Validation",
+  "description": "Run type checking and tests before building for production",
+  "trigger": {
+    "type": "manual"
+  },
+  "action": {
+    "type": "command",
+    "command": "npm run build"
+  },
+  "enabled": true
+}

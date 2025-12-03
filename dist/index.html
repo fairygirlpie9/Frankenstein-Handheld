@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Frankenstein Ritual Game</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0;
+      padding: 0;
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #00ff00;
+      font-size: 24px;
+      text-align: center;
+      text-shadow: 0 0 10px #00ff00;
+    }
+
+    #error {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ff0000;
+      font-size: 18px;
+      text-align: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      border: 2px solid #ff0000;
+      display: none;
+    }
+
+    #audio-controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    #audio-toggle {
+      background: rgba(0, 255, 0, 0.2);
+      border: 2px solid #00ff00;
+      color: #00ff00;
+      padding: 10px 20px;
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+      cursor: pointer;
+      text-shadow: 0 0 5px #00ff00;
+      box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+      transition: all 0.3s;
+    }
+
+    #audio-toggle:hover {
+      background: rgba(0, 255, 0, 0.3);
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+    }
+
+    #audio-toggle.muted {
+      background: rgba(255, 0, 0, 0.2);
+      border-color: #ff0000;
+      color: #ff0000;
+      text-shadow: 0 0 5px #ff0000;
+      box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+    }
+
+    #audio-toggle.muted:hover {
+      background: rgba(255, 0, 0, 0.3);
+      box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+    }
+
+    #volume-control {
+      display: none;
+      background: rgba(0, 255, 0, 0.1);
+      border: 2px solid #00ff00;
+      padding: 10px;
+      box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+    }
+
+    #volume-control.visible {
+      display: block;
+    }
+
+    #volume-slider {
+      width: 150px;
+      height: 6px;
+      background: rgba(0, 255, 0, 0.2);
+      outline: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+
+    #volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #00ff00;
+      cursor: pointer;
+      border-radius: 50%;
+      box-shadow: 0 0 5px #00ff00;
+    }
+
+    #volume-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      background: #00ff00;
+      cursor: pointer;
+      border-radius: 50%;
+      box-shadow: 0 0 5px #00ff00;
+      border: none;
+    }
+
+    #volume-label {
+      color: #00ff00;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      text-align: center;
+      margin-top: 5px;
+      text-shadow: 0 0 3px #00ff00;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-DSKYaQ0j.js"></script>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+  <div id="loading">LOADING CONSOLE...</div>
+  <div id="error"></div>
+  
+  <div id="audio-controls">
+    <button id="audio-toggle">🔊 AUDIO ON</button>
+    <div id="volume-control">
+      <input type="range" id="volume-slider" min="0" max="100" value="80">
+      <div id="volume-label">VOLUME: 80%</div>
+    </div>
+  </div>
+  
+</body>
+</html>

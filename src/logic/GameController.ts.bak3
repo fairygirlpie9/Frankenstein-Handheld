@@ -1,0 +1,456 @@
+/**
+ * GameController - Main game orchestrator
+ * Coordinates all subsystems and manages game loop
+ */
+
+import { GameFSM } from './GameFSM';
+import { InputManager } from './InputManager';
+import { SceneManager } from '../render/SceneManager';
+import { ScreenRenderer } from '../render/ScreenRenderer';
+import { AnimationSystem } from '../render/AnimationSystem';
+import { 
+  VALIDATE_RITUAL_ACTION, 
+  COMPLETE_RITUAL_STEP, 
+  HANDLE_RITUAL_FAILURE,
+  RETRY_RITUAL,
+  START_NEW_RITUAL
+} from './RitualLogic';
+import { InputAction, GameState } from '../config/types';
+import { getRitualForLevel } from '../config/rituals';
+import { TIMING } from '../config/constants';
+
+export class GameController {
+  private fsm: GameFSM;
+  private inputManager: InputManager;
+  private sceneManager: SceneManager;
+  private screenRenderer: ScreenRenderer;
+  private animationSystem: AnimationSystem;
+  private lastFrameTime: number;
+  private animationFrameId: number | null;
+  private currentLevel: number;
+  private animationDelayActive: boolean = false;
+
+  constructor(
+    sceneManager: SceneManager,
+    screenRenderer: ScreenRenderer
+  ) {
+    this.sceneManager = sceneManager;
+    this.screenRenderer = screenRenderer;
+    this.animationSystem = new AnimationSystem();
+    this.currentLevel = 1;
+
+    // Initialize FSM with level 1 ritual
+    const initialRitual = getRitualForLevel(1);
+    this.fsm = new GameFSM(initialRitual);
+
+    // Initialize input manager
+    this.inputManager = new InputManager(
+      sceneManager.getScene(),
+      sceneManager.getCamera()
+    );
+
+    // Setup input listeners
+    this.inputManager.initKeyboardInput();
+    this.inputManager.initTouchInput();
+
+    // Register input handler
+    this.inputManager.on('input', (action) => this.handleInput(action));
+
+    // Register state change handler
+    this.fsm.on('stateChange', (newState, stateData) => {
+      console.log(`State changed to: ${newState}`, stateData);
+      
+      // Trigger effects when entering ITS_ALIVE state
+      if (newState === GameState.STATE_ITS_ALIVE) {
+        this.triggerLevelComplete();
+      }
+      
+      // Trigger effects when entering MONSTER_MAD state
+      if (newState === GameState.STATE_MONSTER_MAD) {
+        this.triggerMonsterMad();
+      }
+    });
+
+    this.lastFrameTime = performance.now();
+    this.animationFrameId = null;
+
+    // Handle window resize
+    window.addEventListener('resize', () => this.handleResize());
+  }
+
+  /**
+   * Start the game loop
+   */
+  start(): void {
+    this.lastFrameTime = performance.now();
+    
+    // Start idle animation on load
+    this.sceneManager.ANIMATE_IDLE();
+    
+    this.update();
+  }
+
+  /**
+   * Main game loop update
+   */
+  private update = (): void => {
+    const currentTime = performance.now();
+    const deltaTime = currentTime - this.lastFrameTime;
+    this.lastFrameTime = currentTime;
+
+    // Update FSM time
+    this.fsm.updateTime(deltaTime);
+
+    // Update animations
+    this.animationSystem.update(deltaTime);
+
+    // Render based on current state
+    this.render();
+
+    // Continue loop
+    this.animationFrameId = requestAnimationFrame(this.update);
+  };
+
+  /**
+   * Handle input from InputManager
+   */
+  handleInput(action: InputAction): void {
+    // Ignore input during animation delays
+    if (this.animationDelayActive) {
+      console.log('Input blocked during animation delay');
+      return;
+    }
+
+    const state = this.fsm.getCurrentState();
+
+    // Always animate joystick when joystick actions are triggered
+    if (action === InputAction.JOYSTICK_UP || 
+        action === InputAction.JOYSTICK_DOWN || 
+        action === InputAction.JOYSTICK_LEFT || 
+        action === InputAction.JOYSTICK_RIGHT) {
+      this.sceneManager.ANIMATE_JOYSTICK(action);
+    }
+
+    switch (state) {
+      case GameState.STATE_IDLE:
+        // Start game on any input
+        if (action === InputAction.BUTTON_START) {
+          this.startLevel(this.currentLevel);
+        }
+        break;
+
+      case GameState.STATE_RITUAL_STEP:
+        // Validate action against current step
+        if (this.validateAction(action)) {
+          this.triggerCorrectFeedback();
+        } else {
+          this.triggerIncorrectFeedback();
+        }
+        break;
+
+      case GameState.STATE_MONSTER_MAD:
+        // Retry on button press (only if not in animation delay)
+        if (action === InputAction.BUTTON_START) {
+          RETRY_RITUAL(this.fsm);
+        }
+        break;
+
+      case GameState.STATE_ITS_ALIVE:
+        // Advance to next level (only if not in animation delay)
+        if (action === InputAction.BUTTON_START) {
+          this.completeLevel();
+        }
+        break;
+    }
+  }
+
+  /**
+   * Validate action against current ritual step
+   */
+  validateAction(action: InputAction): boolean {
+    const currentStep = this.fsm.getCurrentStep();
+    if (!currentStep) return false;
+
+    return VALIDATE_RITUAL_ACTION(action, currentStep.correctAction);
+  }
+
+  /**
+   * Trigger correct action feedback
+   */
+  triggerCorrectFeedback(): void {
+    const currentStep = this.fsm.getCurrentStep();
+    if (!currentStep) return;
+
+    // Play surgeon animation
+    this.animationSystem.playSurgeonAnimation(currentStep.surgeonAnimation);
+
+    // Play surgical object animation if present
+    if (currentStep.surgicalObject) {
+      this.animationSystem.playSurgicalObjectAnimation(currentStep.surgicalObject);
+    }
+
+    // Complete the step
+    COMPLETE_RITUAL_STEP(this.fsm);
+  }
+
+  /**
+   * Trigger incorrect action feedback
+   */
+  triggerIncorrectFeedback(): void {
+    // Shake bolts
+    this.sceneManager.ANIMATE_BOLTS(TIMING.ANIMATION_BOLT_SHAKE_MS);
+
+    // Glow eyes
+    this.sceneManager.ANIMATE_EYES(2.0, TIMING.ANIMATION_EYE_GLOW_MS);
+
+    // Show angry Frankenstein
+    this.sceneManager.SET_FRANKENSTEIN_STATE('angry');
+    
+    // Return to calm after a delay
+    setTimeout(() => {
+      this.sceneManager.SET_FRANKENSTEIN_STATE('calm');
+    }, 1000);
+
+    // Handle failure
+    HANDLE_RITUAL_FAILURE(this.fsm);
+  }
+
+  /**
+   * Render based on current game state
+   */
+  private render(): void {
+    const state = this.fsm.getCurrentState();
+    const stateData = this.fsm.getStateData();
+
+    // Clear screen
+    this.screenRenderer.clear();
+
+    switch (state) {
+      case GameState.STATE_IDLE:
+        this.renderIdleState();
+        break;
+
+      case GameState.STATE_RITUAL_STEP:
+        this.renderRitualStepState(stateData);
+        break;
+
+      case GameState.STATE_MONSTER_MAD:
+        this.renderMonsterMadState();
+        break;
+
+      case GameState.STATE_ITS_ALIVE:
+        this.renderItsAliveState();
+        break;
+    }
+
+    // Update screen texture
+    this.screenRenderer.updateTexture();
+
+    // Render 3D scene
+    this.sceneManager.render();
+  }
+
+  /**
+   * Render IDLE state
+   */
+  private renderIdleState(): void {
+    this.screenRenderer.drawIdleScreen(this.currentLevel);
+  }
+
+  /**
+   * Render RITUAL_STEP state
+   */
+  private renderRitualStepState(stateData: any): void {
+    const currentStep = this.fsm.getCurrentStep();
+
+    // Draw monster based on madness level
+    let monsterState: "calm" | "angry" | "alive" = "calm";
+    if (stateData.golem_madnessLevel > 2) {
+      monsterState = "angry";
+    }
+    this.screenRenderer.drawMonster(monsterState, 150, 150, 200, 200);
+    if (!currentStep) return;
+
+    // Draw prompt
+    this.screenRenderer.drawPrompt(currentStep.promptText, 100);
+
+    // Draw time indicator
+    this.screenRenderer.drawTimeIndicator(
+      stateData.timeRemaining,
+      currentStep.timeLimit
+    );
+
+    // Draw EKG
+    this.screenRenderer.drawEKG(
+      stateData.golem_current_state,
+      performance.now() / 1000,
+      stateData.golem_madnessLevel
+    );
+
+    // Draw surgeon
+    const surgeonFrame = this.animationSystem.getSurgeonFrame();
+    if (surgeonFrame) {
+      this.screenRenderer.drawSurgeon(
+        surgeonFrame.spriteSheet,
+        surgeonFrame.frame.x,
+        surgeonFrame.frame.y,
+        surgeonFrame.frame.width,
+        surgeonFrame.frame.height,
+        150,
+        200
+      );
+    }
+
+    // Draw surgical object if present
+    if (currentStep.surgicalObject) {
+      const objectFrame = this.animationSystem.getSurgicalObjectFrame(currentStep.surgicalObject);
+      if (objectFrame) {
+        this.screenRenderer.drawSurgicalObject(
+          objectFrame.spriteSheet,
+          objectFrame.frame.x,
+          objectFrame.frame.y,
+          objectFrame.frame.width,
+          objectFrame.frame.height,
+          250,
+          220
+        );
+      }
+    }
+
+    // Apply scanlines
+    this.screenRenderer.applyScanlines();
+  }
+
+  /**
+   * Render MONSTER_MAD state
+   */
+  private renderMonsterMadState(): void {
+    // Draw failure message
+    this.screenRenderer.drawPrompt('MONSTER MAD!', 150);
+    
+    // Only show retry prompt after animation delay
+    if (!this.animationDelayActive) {
+      this.screenRenderer.drawPrompt('Press START to Retry', 200);
+    }
+
+    // Apply glitch effect
+    this.screenRenderer.applyGlitchEffect(0.8);
+
+    // Apply scanlines
+    this.screenRenderer.applyScanlines();
+  }
+
+  /**
+   * Render ITS_ALIVE state
+   */
+  private renderItsAliveState(): void {
+    this.screenRenderer.drawItsAliveScreen(this.currentLevel);
+    
+    // Only show continue prompt after animation delay
+    if (!this.animationDelayActive) {
+      this.screenRenderer.drawPrompt('Press START for Next Level', 300);
+    }
+  }
+
+  /**
+   * Start a specific level
+   */
+  startLevel(levelNumber: number): void {
+    console.log('>>> STARTING LEVEL', levelNumber);
+    
+    this.currentLevel = levelNumber;
+    const ritual = getRitualForLevel(levelNumber);
+    START_NEW_RITUAL(this.fsm, ritual);
+
+    // Clean up ALL animations and effects - FORCE STOP EVERYTHING
+    console.log('>>> Cleaning up animations and effects');
+    this.sceneManager.FORCE_STOP_ALL_ANIMATIONS();
+    this.sceneManager.STOP_BACKGROUND_FLASH();
+    
+    // Reset Frankenstein to calm state
+    this.sceneManager.SET_FRANKENSTEIN_STATE('calm');
+
+    // Start stitches animation
+    this.sceneManager.ANIMATE_STITCHES();
+    
+    // Clear animation delay flag
+    this.animationDelayActive = false;
+    
+    console.log('>>> Level started');
+  }
+
+  /**
+   * Complete current level and advance to next
+   */
+  completeLevel(): void {
+    this.currentLevel++;
+    this.startLevel(this.currentLevel);
+  }
+
+  /**
+   * Trigger level completion effects with 2-second animation delay
+   */
+  triggerLevelComplete(): void {
+    console.log('=== TRIGGERING LEVEL COMPLETE EFFECTS ===');
+    
+    // Show alive/happy Frankenstein
+    this.sceneManager.SET_FRANKENSTEIN_STATE('alive');
+    
+    // Animate the model
+    this.sceneManager.ANIMATE_ITS_ALIVE();
+    
+    // Flash the scene background with electric colors
+    this.sceneManager.FLASH_BACKGROUND();
+    
+    // Block input for 2 seconds to let animation play
+    this.animationDelayActive = true;
+    setTimeout(() => {
+      this.animationDelayActive = false;
+      console.log('=== ANIMATION DELAY COMPLETE - INPUT ENABLED ===');
+    }, 2000);
+    
+    console.log('=== LEVEL COMPLETE EFFECTS TRIGGERED ===');
+  }
+
+  /**
+   * Trigger monster mad effects with 2-second animation delay
+   */
+  triggerMonsterMad(): void {
+    console.log('=== TRIGGERING MONSTER MAD EFFECTS ===');
+    
+    // Block input for 2 seconds to let animation play
+    this.animationDelayActive = true;
+    setTimeout(() => {
+      this.animationDelayActive = false;
+      console.log('=== ANIMATION DELAY COMPLETE - INPUT ENABLED ===');
+    }, 2000);
+  }
+
+  /**
+   * Handle window resize
+   */
+  private handleResize(): void {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    this.sceneManager.handleResize(width, height);
+  }
+
+  /**
+   * Stop the game loop
+   */
+  stop(): void {
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+  }
+
+  /**
+   * Cleanup resources
+   */
+  dispose(): void {
+    this.stop();
+    this.inputManager.dispose();
+    this.screenRenderer.dispose();
+  }
+}
